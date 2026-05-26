@@ -74,7 +74,7 @@ void NutServerComponent::dump_config() {
 bool NutServerComponent::start_server() {
 #ifdef USE_ESP32
   // Create server socket
-  server_socket_ = socket(AF_INET, SOCK_STREAM, 0);
+  server_socket_ = lwip_socket(AF_INET, SOCK_STREAM, 0);
   if (server_socket_ < 0) {
     ESP_LOGE(TAG, "Failed to create socket: %d", errno);
     return false;
@@ -82,13 +82,13 @@ bool NutServerComponent::start_server() {
   
   // Set socket options
   int yes = 1;
-  if (setsockopt(server_socket_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
+  if (lwip_setsockopt(server_socket_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
     ESP_LOGW(TAG, "Failed to set SO_REUSEADDR: %d", errno);
   }
   
   // Set non-blocking mode
-  int flags = fcntl(server_socket_, F_GETFL, 0);
-  if (fcntl(server_socket_, F_SETFL, flags | O_NONBLOCK) < 0) {
+  int flags = lwip_fcntl(server_socket_, F_GETFL, 0);
+  if (lwip_fcntl(server_socket_, F_SETFL, flags | O_NONBLOCK) < 0) {
     ESP_LOGW(TAG, "Failed to set non-blocking mode: %d", errno);
   }
   
@@ -99,17 +99,17 @@ bool NutServerComponent::start_server() {
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(port_);
   
-  if (bind(server_socket_, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+  if (lwip_bind(server_socket_, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
     ESP_LOGE(TAG, "Failed to bind to port %d: %d", port_, errno);
-    close(server_socket_);
+    lwip_close(server_socket_);
     server_socket_ = -1;
     return false;
   }
   
   // Start listening
-  if (listen(server_socket_, max_clients_) < 0) {
+  if (lwip_listen(server_socket_, max_clients_) < 0) {
     ESP_LOGE(TAG, "Failed to listen on socket: %d", errno);
-    close(server_socket_);
+    lwip_close(server_socket_);
     server_socket_ = -1;
     return false;
   }
@@ -142,7 +142,7 @@ void NutServerComponent::stop_server() {
   
   // Close server socket
   if (server_socket_ >= 0) {
-    close(server_socket_);
+    lwip_close(server_socket_);
     server_socket_ = -1;
   }
   
@@ -183,7 +183,7 @@ void NutServerComponent::accept_clients() {
   struct sockaddr_in client_addr;
   socklen_t client_len = sizeof(client_addr);
   
-  int client_socket = accept(server_socket_, (struct sockaddr *)&client_addr, &client_len);
+  int client_socket = lwip_accept(server_socket_, (struct sockaddr *)&client_addr, &client_len);
   if (client_socket < 0) {
     if (errno != EWOULDBLOCK && errno != EAGAIN) {
       ESP_LOGW(TAG, "Accept failed: %d", errno);
@@ -192,8 +192,8 @@ void NutServerComponent::accept_clients() {
   }
   
   // Set client socket to non-blocking
-  int flags = fcntl(client_socket, F_GETFL, 0);
-  fcntl(client_socket, F_SETFL, flags | O_NONBLOCK);
+  int flags = lwip_fcntl(client_socket, F_GETFL, 0);
+  lwip_fcntl(client_socket, F_SETFL, flags | O_NONBLOCK);
   
   // Find available client slot
   std::lock_guard<std::mutex> lock(clients_mutex_);
@@ -217,8 +217,8 @@ void NutServerComponent::accept_clients() {
   // No available slots
   ESP_LOGW(TAG, "Maximum clients reached, rejecting connection");
   const char *msg = "ERR MAX-CLIENTS Maximum number of clients reached\n";
-  send(client_socket, msg, strlen(msg), 0);
-  close(client_socket);
+  lwip_send(client_socket, msg, strlen(msg), 0);
+  lwip_close(client_socket);
 #endif
 }
 
@@ -263,7 +263,7 @@ void NutServerComponent::handle_client(NutClient &client) {
 void NutServerComponent::disconnect_client(NutClient &client) {
 #ifdef USE_ESP32
   if (client.socket_fd >= 0) {
-    close(client.socket_fd);
+    lwip_close(client.socket_fd);
   }
   client.reset();
 #endif
